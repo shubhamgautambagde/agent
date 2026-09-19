@@ -1,0 +1,183 @@
+services:
+  postgres:
+    container_name: !reset null
+    ports: !reset []
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  redis:
+    container_name: !reset null
+    ports: !reset []
+    volumes: !override []
+    tmpfs:
+      - /data
+
+  nginx:
+    container_name: !reset null
+    ports: !reset []
+    volumes:
+      - smoke-assets:/app/rapida-data/assets
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "-O", "/dev/null", "http://127.0.0.1:8080/"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+  ui:
+    container_name: !reset null
+    ports: !reset []
+    build:
+      cache_from:
+        - type=gha,scope=${CI_STACK_CACHE_SCOPE:?CI_STACK_CACHE_SCOPE is required}-ui
+      cache_to:
+        - type=gha,scope=${CI_STACK_CACHE_SCOPE:?CI_STACK_CACHE_SCOPE is required}-ui,mode=max
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "-O", "/dev/null", "http://127.0.0.1:3000/"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+  web-api:
+    container_name: !reset null
+    ports: !reset []
+    command: ["./web-api", "-skip-migration"]
+    build:
+      cache_from:
+        - type=gha,scope=${CI_STACK_CACHE_SCOPE:?CI_STACK_CACHE_SCOPE is required}-web-api
+      cache_to:
+        - type=gha,scope=${CI_STACK_CACHE_SCOPE:?CI_STACK_CACHE_SCOPE is required}-web-api,mode=max
+    volumes:
+      - smoke-assets:/app/rapida-data/assets
+
+  integration-api:
+    container_name: !reset null
+    ports: !reset []
+    command: ["./integration-api", "-skip-migration"]
+    build:
+      cache_from:
+        - type=gha,scope=${CI_STACK_CACHE_SCOPE:?CI_STACK_CACHE_SCOPE is required}-integration-api
+      cache_to:
+        - type=gha,scope=${CI_STACK_CACHE_SCOPE:?CI_STACK_CACHE_SCOPE is required}-integration-api,mode=max
+    volumes:
+      - smoke-assets:/app/rapida-data/assets
+
+  endpoint-api:
+    container_name: !reset null
+    ports: !reset []
+    command: ["./endpoint-api", "-skip-migration"]
+    build:
+      cache_from:
+        - type=gha,scope=${CI_STACK_CACHE_SCOPE:?CI_STACK_CACHE_SCOPE is required}-endpoint-api
+      cache_to:
+        - type=gha,scope=${CI_STACK_CACHE_SCOPE:?CI_STACK_CACHE_SCOPE is required}-endpoint-api,mode=max
+    volumes:
+      - smoke-assets:/app/rapida-data/assets
+
+  assistant-api:
+    container_name: !reset null
+    ports: !reset []
+    command: ["./assistant-api", "-skip-migration"]
+    build:
+      cache_from:
+        - type=gha,scope=${CI_STACK_CACHE_SCOPE:?CI_STACK_CACHE_SCOPE is required}-assistant-api
+      cache_to:
+        - type=gha,scope=${CI_STACK_CACHE_SCOPE:?CI_STACK_CACHE_SCOPE is required}-assistant-api,mode=max
+    volumes:
+      - smoke-assets:/app/rapida-data/assets
+
+  migrate-web:
+    image: migrate/migrate:v4.18.1@sha256:f21c436af23c282f4516b00ba3e93bccf5c5fe5cd52530fd5c319a936998f539
+    platform: linux/amd64
+    entrypoint: ["/migrate", "-path=/migrations", "-database=postgres://rapida_user:rapida_db_password@postgres:5432/web_db?sslmode=disable"]
+    volumes:
+      - ./api/web-api/migrations:/migrations:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - api-network
+
+  migrate-integration:
+    image: migrate/migrate:v4.18.1@sha256:f21c436af23c282f4516b00ba3e93bccf5c5fe5cd52530fd5c319a936998f539
+    platform: linux/amd64
+    entrypoint: ["/migrate", "-path=/migrations", "-database=postgres://rapida_user:rapida_db_password@postgres:5432/integration_db?sslmode=disable"]
+    volumes:
+      - ./api/integration-api/migrations:/migrations:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - api-network
+
+  migrate-endpoint:
+    image: migrate/migrate:v4.18.1@sha256:f21c436af23c282f4516b00ba3e93bccf5c5fe5cd52530fd5c319a936998f539
+    platform: linux/amd64
+    entrypoint: ["/migrate", "-path=/migrations", "-database=postgres://rapida_user:rapida_db_password@postgres:5432/endpoint_db?sslmode=disable"]
+    volumes:
+      - ./api/endpoint-api/migrations:/migrations:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - api-network
+
+  migrate-assistant:
+    image: migrate/migrate:v4.18.1@sha256:f21c436af23c282f4516b00ba3e93bccf5c5fe5cd52530fd5c319a936998f539
+    platform: linux/amd64
+    entrypoint: ["/migrate", "-path=/migrations", "-database=postgres://rapida_user:rapida_db_password@postgres:5432/assistant_db?sslmode=disable"]
+    volumes:
+      - ./api/assistant-api/migrations:/migrations:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - api-network
+
+  test-runner:
+    image: rapida-ci-test-runner:ci
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: tests/smoke/Dockerfile
+      cache_from:
+        - type=gha,scope=${CI_STACK_CACHE_SCOPE:?CI_STACK_CACHE_SCOPE is required}-test-runner
+      cache_to:
+        - type=gha,scope=${CI_STACK_CACHE_SCOPE:?CI_STACK_CACHE_SCOPE is required}-test-runner,mode=max
+    environment:
+      PGPASSWORD: rapida_db_password
+      GITHUB_ACTIONS: ${GITHUB_ACTIONS:-false}
+      CI_STACK_AUTH_TOKEN: ${CI_STACK_AUTH_TOKEN:?CI_STACK_AUTH_TOKEN is required}
+      CI_STACK_PROJECT_API_KEY: ${CI_STACK_PROJECT_API_KEY:?CI_STACK_PROJECT_API_KEY is required}
+    tmpfs:
+      - /run/secrets:mode=0700,uid=1000,gid=1000
+    volumes:
+      - ${CI_STACK_REPORTS_DIR:-./ci-stack-reports}:/reports
+      - ./api/web-api/migrations:/workspace/migrations/web-api:ro
+      - ./api/integration-api/migrations:/workspace/migrations/integration-api:ro
+      - ./api/endpoint-api/migrations:/workspace/migrations/endpoint-api:ro
+      - ./api/assistant-api/migrations:/workspace/migrations/assistant-api:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      web-api:
+        condition: service_healthy
+      integration-api:
+        condition: service_healthy
+      endpoint-api:
+        condition: service_healthy
+      assistant-api:
+        condition: service_healthy
+      ui:
+        condition: service_healthy
+      nginx:
+        condition: service_healthy
+    networks:
+      - api-network
+
+volumes:
+  postgres-data:
+  smoke-assets:

@@ -1,0 +1,91 @@
+version: "2"
+
+run:
+  timeout: 5m
+  modules-download-mode: readonly
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - bodyclose
+    - dogsled
+    - dupl
+    - gocognit
+    - goconst
+    - gocritic
+    - gocyclo
+    - goprintffuncname
+    - gosec
+    - misspell
+    - nakedret
+    - nolintlint
+    - prealloc
+    - revive
+    - whitespace
+
+  settings:
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
+
+    govet:
+      enable:
+        - shadow
+
+    gocyclo:
+      min-complexity: 15
+
+    gocognit:
+      min-complexity: 20
+
+    dupl:
+      # Increased threshold to reduce noise from similar boilerplate (gRPC handlers, service methods)
+      # Also covers similar provider implementations (gemini.go, vertexai.go - ~100 lines)
+      threshold: 500
+
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+
+    misspell:
+      locale: US
+
+    gosec:
+      excludes:
+        - G104
+        - G304
+
+  exclusions:
+    generated: lax
+    paths:
+      - protos/
+      - sdks/
+    rules:
+      - path: _test\.go
+        linters:
+          - dupl
+          - gosec
+          - gocyclo
+          - gocognit
+
+      - path: \.pb\.go
+        linters:
+          - all
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/rapidaai
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
